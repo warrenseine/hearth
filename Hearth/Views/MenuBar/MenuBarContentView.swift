@@ -4,19 +4,16 @@ import HearthKit
 struct MenuBarContentView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.openWindow) private var openWindow
+    @State private var listHeight: CGFloat = 0
 
     var body: some View {
         let entries = environment.store.entries
+        let running = entries.filter { $0.connection != nil }
+        let stopped = entries.filter { $0.connection == nil }
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Hearth").font(.headline)
-                Spacer()
-                Text("\(environment.store.connections.count) running")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 6)
+            Text("Hearth").font(.headline)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 6)
             Divider()
             if entries.isEmpty {
                 Text("No projects or running servers.")
@@ -25,13 +22,16 @@ struct MenuBarContentView: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 2) {
-                        ForEach(entries) { entry in
-                            MenuBarProjectRow(entry: entry)
-                        }
+                        section("Running", running)
+                        section("Stopped", stopped)
                     }
                     .padding(.vertical, 4)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { listHeight = $0 }
                 }
-                .frame(maxHeight: 420)
+                // The popover sizes to fit, and a ScrollView has no ideal height of its own, so
+                // with only a max it collapsed to zero and the list was invisible. Pin it to the
+                // measured content height, capped so a long list scrolls.
+                .frame(height: min(listHeight, 420))
             }
             if let error = environment.store.lastError {
                 Divider()
@@ -53,6 +53,21 @@ struct MenuBarContentView: View {
         }
         .frame(width: 320)
         .padding(.vertical, 8)
+    }
+
+    @ViewBuilder
+    private func section(_ title: String, _ entries: [ProjectEntry]) -> some View {
+        if !entries.isEmpty {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .padding(.top, 6)
+                .padding(.bottom, 2)
+            ForEach(entries) { entry in
+                MenuBarProjectRow(entry: entry)
+            }
+        }
     }
 }
 
@@ -87,13 +102,11 @@ private struct MenuBarProjectRow: View {
                 if store.isPending(entry) {
                     ProgressView().controlSize(.small)
                 } else if entry.connection != nil {
-                    Button("Down") { Task { await store.down(entry) } }
-                        .buttonStyle(.borderless)
-                        .font(.caption)
+                    iconButton("stop.fill") { await store.down(entry) }
+                        .help("Down: stop all processes and the server")
                 } else if let project = entry.project {
-                    Button("Up") { Task { await store.up(project) } }
-                        .buttonStyle(.borderless)
-                        .font(.caption)
+                    iconButton("play.fill") { await store.up(project) }
+                        .help("Up: start headless in the background")
                         .disabled(project.isOrphaned || store.binaryPath == nil)
                 }
             }
