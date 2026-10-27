@@ -1,0 +1,28 @@
+# Sample project for exercising Hearth by hand: `make run`, then add this folder.
+version: "0.5"
+
+processes:
+  web:
+    command: python3 -m http.server 8765
+    readiness_probe:
+      http_get:
+        host: 127.0.0.1
+        port: 8765
+        path: /
+      initial_delay_seconds: 1
+      period_seconds: 2
+
+  worker:
+    command: 'while true; do echo "worker tick $(date +%T)"; sleep 2; done'
+    namespace: jobs
+    depends_on:
+      web:
+        condition: process_healthy
+
+  flaky:
+    command: 'echo "flaky starting"; sleep 5; echo "flaky crashing" >&2; exit 1'
+    namespace: jobs
+    availability:
+      restart: on_failure
+      backoff_seconds: 3
+      max_restarts: 5

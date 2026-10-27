@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  hearthkit-tests:
+    # HearthKit has no macOS-26-specific dependency at the source level, but its Package.swift
+    # declares platforms: [.macOS(.v26)], so it still needs an SDK that knows about that tag.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+      - name: Show Xcode / Swift version
+        run: xcodebuild -version && swift --version
+      - name: Run HearthKit unit tests
+        working-directory: HearthKit
+        run: swift test
+
+  app-build:
+    runs-on: macos-26
+    steps:
+      # App icon/menu bar icon PNGs are Git LFS objects; without lfs: true, checkout leaves their
+      # literal "version https://git-lfs.github.com/spec/v1" pointer text in place instead of the
+      # real image data, and actool fails to compile the asset catalog against that.
+      - uses: actions/checkout@v5
+        with:
+          lfs: true
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Build (unsigned, Debug)
+        run: |
+          xcodebuild -project Hearth.xcodeproj -scheme Hearth \
+            -configuration Debug -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO build

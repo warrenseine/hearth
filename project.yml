@@ -1,0 +1,46 @@
+name: Hearth
+options:
+  bundleIdPrefix: ai.hearth
+  deploymentTarget:
+    macOS: "26.0"
+  createIntermediateGroups: true
+
+packages:
+  HearthKit:
+    path: HearthKit
+
+targets:
+  Hearth:
+    type: application
+    platform: macOS
+    sources:
+      - path: Hearth
+    dependencies:
+      - package: HearthKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.hearth.app
+        PRODUCT_NAME: "Hearth"
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        MACOSX_DEPLOYMENT_TARGET: "26.0"
+        ENABLE_APP_SANDBOX: false
+        ENABLE_HARDENED_RUNTIME: false
+        # Ad-hoc sign the whole bundle (no Developer ID needed). CODE_SIGNING_ALLOWED must stay
+        # true: with it false, Xcode skips its CodeSign phase and only the linker's minimal
+        # auto-signature applies, which doesn't seal Resources or bind Info.plist (the Dock then
+        # refuses the custom icon). Learned the hard way in opossum-desktop.
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGNING_REQUIRED: false
+        CODE_SIGNING_ALLOWED: true
+        GENERATE_INFOPLIST_FILE: true
+        INFOPLIST_KEY_LSUIElement: false
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        INFOPLIST_KEY_LSApplicationCategoryType: "public.app-category.developer-tools"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    scheme:
+      testTargets: []
+      config: Debug
