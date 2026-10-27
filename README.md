@@ -10,6 +10,8 @@ the parts of its TUI you reach for every day, in a menu bar + a normal window.
 Hearth has no daemon of its own. It talks to process-compose's REST + WebSocket API, starts
 projects as detached headless servers, and finds the ones you started from a terminal.
 
+![Hearth main window: process table with health and live logs](docs/screenshot.png)
+
 ## Requirements
 
 - macOS 26+ on Apple silicon
