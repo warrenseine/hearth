@@ -39,9 +39,14 @@ public struct BinaryLocator: Sendable {
             let expanded = (candidate as NSString).expandingTildeInPath
             if fileManager.isExecutableFile(atPath: expanded) { return expanded }
         }
+        return locate("process-compose")
+    }
+
+    /// Any other tool (e.g. `gh`), searched in the same common locations, then `PATH`.
+    public func locate(_ name: String) -> String? {
         let pathDirs = (environment["PATH"] ?? "").split(separator: ":").map(String.init)
         for dir in commonPaths + pathDirs {
-            let candidate = dir + "/process-compose"
+            let candidate = dir + "/" + name
             if fileManager.isExecutableFile(atPath: candidate) {
                 return candidate
             }

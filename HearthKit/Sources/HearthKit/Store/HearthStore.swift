@@ -21,6 +21,11 @@ public struct ProjectEntry: Identifiable, Equatable {
 
     public var isRunning: Bool { connection != nil }
 
+    /// The project's folder, or the discovered server's working directory.
+    public var directory: String? {
+        project?.lastKnownPath ?? connection?.invocation?.workingDirectory
+    }
+
     public nonisolated static func == (lhs: ProjectEntry, rhs: ProjectEntry) -> Bool {
         lhs.id == rhs.id && lhs.project == rhs.project && lhs.connection === rhs.connection
     }
@@ -36,6 +41,9 @@ public final class HearthStore {
     public private(set) var pending: Set<String> = []
     public var lastError: String?
     public private(set) var binaryPath: String?
+    /// Latest PR for each entry's checked-out branch, by folder. Looked up when a folder first
+    /// appears and again on `refreshPullRequests()` (the menu bar calls it when it opens).
+    public private(set) var pullRequests: [String: PullRequest] = [:]
 
     public let registry: ProjectRegistry
     private let discovery: Discovery
@@ -43,11 +51,14 @@ public final class HearthStore {
     private var shellEnvironment: [String: String]?
     private var visible = true
     private var scanTask: Task<Void, Never>?
+    private let pullRequestLookup: PullRequestLookup?
+    private var pullRequestFolders: Set<String> = []
 
-    public init(registry: ProjectRegistry, discovery: Discovery = Discovery(), binaryOverride: String? = nil) {
+    public init(registry: ProjectRegistry, discovery: Discovery = Discovery(), binaryOverride: String? = nil, pullRequestLookup: PullRequestLookup? = .located()) {
         self.registry = registry
         self.discovery = discovery
         self.binaryOverride = binaryOverride
+        self.pullRequestLookup = pullRequestLookup
         binaryPath = BinaryLocator(override: binaryOverride).locateProcessCompose()
     }
 
@@ -125,6 +136,7 @@ public final class HearthStore {
 
     public func reloadProjects() async {
         projects = await registry.refreshAll()
+        Task { await refreshPullRequests(onlyNew: true) }
     }
 
     /// Reconciles `connections` with what discovery sees right now.
@@ -150,6 +162,32 @@ public final class HearthStore {
             connection.setVisible(visible)
             connections[endpoint] = connection
             connection.start()
+        }
+        Task { await refreshPullRequests(onlyNew: true) }
+    }
+
+    // MARK: Pull requests
+
+    public func pullRequest(for entry: ProjectEntry) -> PullRequest? {
+        entry.directory.flatMap { pullRequests[$0] }
+    }
+
+    /// Re-resolves every entry's PR (`onlyNew`: just folders not looked up yet). No-op without `gh`.
+    public func refreshPullRequests(onlyNew: Bool = false) async {
+        guard let lookup = pullRequestLookup else { return }
+        let folders = Set(entries.compactMap(\.directory)).filter { !onlyNew || !pullRequestFolders.contains($0) }
+        guard !folders.isEmpty else { return }
+        pullRequestFolders.formUnion(folders)
+        let found = await withTaskGroup(of: (String, PullRequest?).self) { group in
+            for folder in folders {
+                group.addTask { (folder, await lookup.pullRequest(in: folder)) }
+            }
+            var found: [(String, PullRequest?)] = []
+            for await result in group { found.append(result) }
+            return found
+        }
+        for (folder, pullRequest) in found {
+            pullRequests[folder] = pullRequest
         }
     }
 

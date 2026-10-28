@@ -53,6 +53,8 @@ struct MenuBarContentView: View {
         }
         .frame(width: 320)
         .padding(.vertical, 8)
+        // The popover's content is rebuilt each time it opens, so this runs on every open.
+        .onAppear { Task { await environment.store.refreshPullRequests() } }
     }
 
     @ViewBuilder
@@ -92,11 +94,8 @@ private struct MenuBarProjectRow: View {
                 .disabled(entry.connection == nil)
                 StatusDot(kind: entry.connection.map { StatusDot.Kind($0.overallPhase) } ?? .stopped)
                 Text(entry.title).lineLimit(1)
-                if let connection = entry.connection {
-                    Text("\(connection.runningCount)/\(connection.processes.count)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
+                if let pullRequest = store.pullRequest(for: entry) {
+                    PullRequestLink(pullRequest: pullRequest)
                 }
                 Spacer()
                 if store.isPending(entry) {
@@ -145,5 +144,53 @@ private struct MenuBarProjectRow: View {
             Image(systemName: systemImage).font(.caption)
         }
         .buttonStyle(.borderless)
+    }
+}
+
+private struct PullRequestLink: View {
+    let pullRequest: PullRequest
+    @State private var isHovered = false
+    @State private var showsTitle = false
+
+    var body: some View {
+        Link("#\(pullRequest.number)", destination: pullRequest.url)
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(color)
+            // Not `.help`: tooltips never show in a MenuBarExtra window (it doesn't become key).
+            .onHover { hovering in
+                isHovered = hovering
+                guard hovering else { showsTitle = false; return }
+                Task {
+                    try? await Task.sleep(for: .milliseconds(400))
+                    if isHovered { showsTitle = true }
+                }
+            }
+            .popover(isPresented: $showsTitle, arrowEdge: .bottom) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(pullRequest.title).font(.callout)
+                    Text("\(label) #\(pullRequest.number)").font(.caption).foregroundStyle(.secondary)
+                }
+                .padding(8)
+                .frame(maxWidth: 360, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+    }
+
+    private var label: String {
+        if pullRequest.isDraft && pullRequest.state == .open { return "Draft PR" }
+        return switch pullRequest.state {
+        case .open: "Open PR"
+        case .merged: "Merged PR"
+        case .closed: "Closed PR"
+        }
+    }
+
+    private var color: Color {
+        if pullRequest.isDraft && pullRequest.state == .open { return .secondary }
+        return switch pullRequest.state {
+        case .open: .green
+        case .merged: .purple
+        case .closed: .red
+        }
     }
 }
