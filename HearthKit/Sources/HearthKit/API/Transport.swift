@@ -351,10 +351,15 @@ public struct Transport: Sendable {
         self.timeout = timeout
     }
 
-    public func request(_ method: String, _ path: String, body: Data? = nil) async throws -> HTTPResponse {
+    /// `responseTimeout` overrides how long to wait for the reply once connected; connecting
+    /// always uses `timeout`, so a dead server still fails fast.
+    public func request(
+        _ method: String, _ path: String, body: Data? = nil, responseTimeout: Duration? = nil
+    ) async throws -> HTTPResponse {
         let connection = ByteConnection(endpoint: endpoint)
         defer { connection.cancel() }
         let timeout = self.timeout
+        let overall = responseTimeout.map { timeout + $0 } ?? timeout
         return try await withThrowingTaskGroup(of: HTTPResponse.self) { group in
             group.addTask {
                 try await connection.open(timeout: timeout)
@@ -372,7 +377,7 @@ public struct Transport: Sendable {
                 }
             }
             group.addTask {
-                try await Task.sleep(for: timeout)
+                try await Task.sleep(for: overall)
                 throw PCError.unreachable("request timed out")
             }
             defer { group.cancelAll() }

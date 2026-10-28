@@ -58,6 +58,26 @@ struct LiveServerTests {
         }
     }
 
+    @Test("stopping a project outlasts the default timeout while a process ignores SIGTERM")
+    func slowStop() async throws {
+        // process-compose answers /project/stop only after every process has exited; this one
+        // holds out for its 7s shutdown timeout, past the client's 5s default.
+        let server = try await LiveServer.start(.socket, config: """
+            version: "0.5"
+            processes:
+              stubborn:
+                command: "trap '' TERM; while true; do sleep 1; done"
+                shutdown:
+                  timeout_seconds: 7
+            """)
+        defer { try? FileManager.default.removeItem(at: server.directory) }
+        let client = PCClient(endpoint: server.endpoint)
+        try await waitUntil { try await client.processes().first?.isRunning == true }
+        let started = ContinuousClock.now
+        try await client.stopProject()
+        #expect(ContinuousClock.now - started > .seconds(5))
+    }
+
     @Test("an endpoint with nothing listening fails fast as unreachable")
     func unreachable() async throws {
         let client = PCClient(endpoint: .unix(path: FileManager.default.temporaryDirectory.appendingPathComponent("nope-\(UUID().uuidString.prefix(6)).sock").path))
@@ -89,16 +109,18 @@ struct LiveServer {
     let directory: URL
     let token: String?
 
-    static func start(_ mode: Mode) async throws -> LiveServer {
-        let dir = try makeTempDir("live")
-        try """
+    static let defaultConfig = """
         version: "0.5"
         processes:
           ticker:
             command: 'while true; do echo "tick $$(date +%s)"; sleep 0.3; done'
           sleeper:
             command: sleep 600
-        """.write(to: dir.appendingPathComponent("process-compose.yaml"), atomically: true, encoding: .utf8)
+        """
+
+    static func start(_ mode: Mode, config: String = defaultConfig) async throws -> LiveServer {
+        let dir = try makeTempDir("live")
+        try config.write(to: dir.appendingPathComponent("process-compose.yaml"), atomically: true, encoding: .utf8)
 
         var arguments = ["up", "-D", "-t=false", "-f", "process-compose.yaml", "-L", dir.appendingPathComponent("pc.log").path]
         var environment = ProcessInfo.processInfo.environment

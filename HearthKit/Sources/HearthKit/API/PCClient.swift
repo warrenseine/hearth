@@ -54,11 +54,11 @@ public struct PCClient: Sendable {
     }
 
     public func stop(_ name: String) async throws {
-        _ = try await call("PATCH", "/process/stop/\(escape(name))")
+        _ = try await call("PATCH", "/process/stop/\(escape(name))", waitingForExit: true)
     }
 
     public func restart(_ name: String) async throws {
-        _ = try await call("POST", "/process/restart/\(escape(name))")
+        _ = try await call("POST", "/process/restart/\(escape(name))", waitingForExit: true)
     }
 
     /// Re-reads the project's config files from disk and applies the difference.
@@ -68,7 +68,7 @@ public struct PCClient: Sendable {
 
     /// Stops every process and shuts the server itself down (what `process-compose down` does).
     public func stopProject() async throws {
-        _ = try await call("POST", "/project/stop")
+        _ = try await call("POST", "/project/stop", waitingForExit: true)
     }
 
     // MARK: Streams
@@ -88,8 +88,15 @@ public struct PCClient: Sendable {
 
     // MARK: Plumbing
 
-    private func call(_ method: String, _ path: String, body: Data? = nil) async throws -> Data {
-        let response = try await transport.request(method, path, body: body)
+    /// How long stop/restart may take to answer. process-compose replies only once the
+    /// processes have exited, which for one that ignores SIGTERM means its whole
+    /// `shutdown.timeout_seconds` (default 10s, often set higher) before the SIGKILL.
+    static let exitTimeout: Duration = .seconds(120)
+
+    private func call(_ method: String, _ path: String, body: Data? = nil, waitingForExit: Bool = false) async throws -> Data {
+        let response = try await transport.request(
+            method, path, body: body, responseTimeout: waitingForExit ? Self.exitTimeout : nil
+        )
         switch response.status {
         case 200..<300:
             return response.body
