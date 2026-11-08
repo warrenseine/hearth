@@ -70,4 +70,25 @@ struct StoreLiveTests {
         #expect(store.entries.first { $0.project?.id == project.id }?.isRunning == false)
         try? FileManager.default.removeItem(at: Launcher.logFile(projectID: project.id))
     }
+
+    @Test("stopping a discovered server registers it, so it stays listed as stopped")
+    func downAdoptsDiscoveredServer() async throws {
+        let server = try await LiveServer.start(.socket)
+        defer { server.shutdown() }
+        let registryURL = FileManager.default.temporaryDirectory.appendingPathComponent("store-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: registryURL) }
+        let store = HearthStore(registry: try ProjectRegistry(storeURL: registryURL), pullRequestLookup: nil)
+        await store.reloadProjects()
+        await store.rescan()
+        let entry = try #require(store.entries.first { $0.connection?.endpoint == server.endpoint })
+        #expect(entry.project == nil)
+
+        await store.down(entry)
+        #expect(store.connections[server.endpoint] == nil)
+        let project = try #require(store.projects.first)
+        #expect(project.configFiles == ["process-compose.yaml"])
+        #expect(project.lastKnownPath == server.directory.resolvingSymlinksInPath().standardizedFileURL.path
+            || project.lastKnownPath == server.directory.standardizedFileURL.path)
+        #expect(store.entries.contains { $0.project?.id == project.id && !$0.isRunning })
+    }
 }

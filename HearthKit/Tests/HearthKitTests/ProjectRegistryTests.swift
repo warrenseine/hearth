@@ -66,4 +66,23 @@ struct ProjectRegistryTests {
         let registry = try ProjectRegistry(storeURL: FileManager.default.temporaryDirectory.appendingPathComponent("r-\(UUID().uuidString).json"))
         await #expect(throws: ProjectRegistryError.self) { try await registry.register(directory: dir) }
     }
+
+    @Test("adopting a discovered server keeps its files relative to its working directory")
+    func adoption() throws {
+        let invocation = try #require(ServerInvocation.parse(
+            pid: 1,
+            argv: ["process-compose", "up", "-f", "pc.yaml", "-f", "../shared/base.yaml", "-e", ".env"],
+            environment: [:],
+            workingDirectory: "/work/app",
+            temporaryDirectory: "/tmp"
+        ))
+        let adoption = try #require(HearthStore.adoption(for: invocation))
+        #expect(adoption.directory.path == "/work/app")
+        #expect(adoption.configFiles == ["pc.yaml", "../shared/base.yaml"])
+        #expect(adoption.envFiles == [".env"])
+
+        let bare = try #require(ServerInvocation.parse(pid: 1, argv: ["process-compose"], environment: [:], workingDirectory: "/work/app", temporaryDirectory: "/tmp"))
+        #expect(HearthStore.adoption(for: bare)?.configFiles == nil)
+        #expect(HearthStore.relativePath(of: "/work/app", to: "/work/app") == ".")
+    }
 }

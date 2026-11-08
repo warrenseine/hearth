@@ -241,11 +241,16 @@ public final class HearthStore {
     }
 
     /// `process-compose down` for any running server: stops its processes and the server.
+    /// A discovered server no registered project claims is registered first, so it stays in the
+    /// list as stopped and can be brought back up.
     public func down(_ entry: ProjectEntry) async {
         guard let connection = entry.connection else { return }
         let key = entry.project?.id ?? entry.id
         pending.insert(key)
         defer { pending.remove(key) }
+        if entry.project == nil {
+            await adopt(connection)
+        }
         do {
             try await connection.shutDown()
             lastError = nil
@@ -258,6 +263,43 @@ public final class HearthStore {
             await rescan()
             if connections[connection.endpoint] == nil { break }
         }
+    }
+
+    /// Registers a discovered server's folder and config/env files as a project. Best effort: a
+    /// failure here must not keep the server from stopping.
+    private func adopt(_ connection: ServerConnection) async {
+        guard let invocation = connection.invocation, let adoption = Self.adoption(for: invocation) else { return }
+        _ = try? await registry.register(
+            directory: adoption.directory,
+            name: connection.displayName,
+            configFiles: adoption.configFiles,
+            envFiles: adoption.envFiles
+        )
+        await reloadProjects()
+    }
+
+    /// The registration that relaunches what `invocation` runs: its working directory, with its
+    /// `-f`/`-e` files made relative to it (`nil` config files: default discovery, as the server
+    /// did). `nil` when the working directory is unknown.
+    nonisolated static func adoption(for invocation: ServerInvocation) -> (directory: URL, configFiles: [String]?, envFiles: [String])? {
+        guard let cwd = invocation.workingDirectory else { return nil }
+        let directory = URL(fileURLWithPath: cwd).standardizedFileURL
+        let relative = { (path: String) in relativePath(of: path, to: directory.path) }
+        return (
+            directory,
+            invocation.configFiles.isEmpty ? nil : invocation.configFiles.map(relative),
+            invocation.envFiles.map(relative)
+        )
+    }
+
+    /// `path` relative to `base` (both absolute), climbing with `..` when it lies outside.
+    nonisolated static func relativePath(of path: String, to base: String) -> String {
+        let target = URL(fileURLWithPath: path).standardizedFileURL.pathComponents
+        let from = URL(fileURLWithPath: base).standardizedFileURL.pathComponents
+        var common = 0
+        while common < target.count, common < from.count, target[common] == from[common] { common += 1 }
+        let parts = Array(repeating: "..", count: from.count - common) + target[common...]
+        return parts.isEmpty ? "." : parts.joined(separator: "/")
     }
 
     public func isPending(_ entry: ProjectEntry) -> Bool {
