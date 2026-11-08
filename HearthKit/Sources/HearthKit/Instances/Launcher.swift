@@ -93,8 +93,12 @@ public struct Launcher: Sendable {
 /// The user's login-shell environment, so processes Hearth launches find the same tools
 /// (`node`, `python3`, mise/nvm/asdf shims, …) they'd find from a terminal. An app launched from
 /// Finder/Dock only inherits launchd's minimal environment.
+///
+/// With a `directory`, the shell starts there and applies that folder's mise and direnv
+/// environments too. Their shell hooks only fire on a prompt or `cd`, which `-c` never reaches,
+/// and a project may rely on `mise exec` without the user's shell activating mise at all.
 public enum ShellEnvironment {
-    public static func load(timeout: Duration = .seconds(5)) async -> [String: String] {
+    public static func load(directory: String? = nil, timeout: Duration = .seconds(5)) async -> [String: String] {
         let base = ProcessInfo.processInfo.environment
         let shell = base["SHELL"].flatMap { $0.isEmpty ? nil : $0 } ?? "/bin/zsh"
         let runner = SubprocessRunner(killGracePeriod: .milliseconds(200))
@@ -104,8 +108,8 @@ public enum ShellEnvironment {
                 // ~/.zshrc-only setups count too. Markers fence off anything rc files print.
                 guard let result = try? await runner.run(
                     executable: shell,
-                    arguments: ["-l", "-i", "-c", "echo __HEARTH_ENV__; /usr/bin/env; echo __HEARTH_END__"],
-                    currentDirectory: nil,
+                    arguments: ["-l", "-i", "-c", script(shell: shell, folderTools: directory != nil)],
+                    currentDirectory: directory.map { URL(fileURLWithPath: $0) },
                     environment: base
                 ) else { return nil }
                 return parseEnv(result.stdout)
@@ -123,6 +127,25 @@ public enum ShellEnvironment {
             merged[key] = value
         }
         return merged
+    }
+
+    /// The `-c` script: optionally apply the cwd's mise/direnv environment (in the shell's own
+    /// syntax; skipped for shells mise and direnv don't speak), then print the environment.
+    static func script(shell: String, folderTools: Bool) -> String {
+        let dump = "echo __HEARTH_ENV__; /usr/bin/env; echo __HEARTH_END__"
+        guard folderTools else { return dump }
+        switch (shell as NSString).lastPathComponent {
+        case let name where ["zsh", "bash"].contains(name):
+            return "command -v mise >/dev/null 2>&1 && eval \"$(mise env -s \(name) 2>/dev/null)\"; "
+                + "command -v direnv >/dev/null 2>&1 && eval \"$(direnv export \(name) 2>/dev/null)\"; "
+                + dump
+        case "fish":
+            return "type -q mise; and mise env -s fish 2>/dev/null | source; "
+                + "type -q direnv; and direnv export fish 2>/dev/null | source; "
+                + dump
+        default:
+            return dump
+        }
     }
 
     static func parseEnv(_ output: String) -> [String: String]? {

@@ -122,6 +122,19 @@ struct HelperTests {
         #expect(ShellEnvironment.parseEnv("no markers") == nil)
     }
 
+    @Test("applies a folder's mise/direnv environment in the shell's own syntax")
+    func folderToolsScript() {
+        let dump = "echo __HEARTH_ENV__; /usr/bin/env; echo __HEARTH_END__"
+        #expect(ShellEnvironment.script(shell: "/bin/zsh", folderTools: false) == dump)
+        let zsh = ShellEnvironment.script(shell: "/bin/zsh", folderTools: true)
+        #expect(zsh.contains("eval \"$(mise env -s zsh 2>/dev/null)\""))
+        #expect(zsh.contains("eval \"$(direnv export zsh 2>/dev/null)\""))
+        #expect(zsh.hasSuffix(dump))
+        #expect(ShellEnvironment.script(shell: "/opt/homebrew/bin/bash", folderTools: true).contains("mise env -s bash"))
+        #expect(ShellEnvironment.script(shell: "/opt/homebrew/bin/fish", folderTools: true).contains("mise env -s fish 2>/dev/null | source"))
+        #expect(ShellEnvironment.script(shell: "/bin/sh", folderTools: true) == dump)
+    }
+
     @Test("strips CSI and OSC escapes")
     func ansi() {
         #expect(ANSI.strip("\u{1B}[32m\u{1B}[1mVITE\u{1B}[22m ready") == "VITE ready")

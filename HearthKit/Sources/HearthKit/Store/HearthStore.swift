@@ -48,7 +48,6 @@ public final class HearthStore {
     public let registry: ProjectRegistry
     private let discovery: Discovery
     private var binaryOverride: String?
-    private var shellEnvironment: [String: String]?
     private var visible = true
     private var scanTask: Task<Void, Never>?
     private let pullRequestLookup: PullRequestLookup?
@@ -115,7 +114,6 @@ public final class HearthStore {
                 try? await Task.sleep(for: interval)
             }
         }
-        Task { shellEnvironment = await ShellEnvironment.load() }
     }
 
     public func stop() {
@@ -226,13 +224,11 @@ public final class HearthStore {
         }
         pending.insert(project.id)
         defer { pending.remove(project.id) }
-        var environment = shellEnvironment
-        if environment == nil {
-            environment = await ShellEnvironment.load()
-            shellEnvironment = environment
-        }
+        // Loaded fresh for the project's folder, so its mise/direnv tools are on PATH (and a
+        // config edit since the last launch counts).
+        let environment = await ShellEnvironment.load(directory: context.directory.path)
         do {
-            try await Launcher(binary: binary, environment: environment ?? ProcessInfo.processInfo.environment).up(context)
+            try await Launcher(binary: binary, environment: environment).up(context)
             lastError = nil
         } catch {
             lastError = "Couldn't start \(project.name): \(error)"
