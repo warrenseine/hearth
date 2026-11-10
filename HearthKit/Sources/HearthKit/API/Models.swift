@@ -83,7 +83,7 @@ public struct ProcessState: Sendable, Equatable, Identifiable, Decodable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         name = try c.decode(String.self, forKey: .name)
-        namespace = try c.decodeIfPresent(String.self, forKey: .namespace) ?? "default"
+        namespace = try c.decodeIfPresent(ProcessNamespaces.self, forKey: .namespace)?.displayName ?? "default"
         status = try c.decodeIfPresent(String.self, forKey: .status) ?? "Unknown"
         systemTime = try c.decodeIfPresent(String.self, forKey: .systemTime) ?? "-"
         age = try c.decodeIfPresent(Int64.self, forKey: .age) ?? 0
@@ -232,14 +232,14 @@ public struct ProcessConfig: Sendable, Equatable {
             let name: String
             let command: String?
             let workingDir: String?
-            let namespace: String?
+            let namespace: ProcessNamespaces?
             let replicas: Int?
         }
         let typed = try JSONDecoder().decode(Typed.self, from: data)
         name = typed.name
         command = typed.command
         workingDir = typed.workingDir
-        namespace = typed.namespace
+        namespace = typed.namespace?.displayName
         replicas = typed.replicas
         // `originalConfig` is the same config again as an escaped JSON string; dropping it keeps
         // the raw view readable.
@@ -284,6 +284,19 @@ public struct ProcessStateEvent: Sendable, Equatable, Decodable {
 
 struct ProcessesEnvelope: Decodable {
     let data: [ProcessState]
+}
+
+private struct ProcessNamespaces: Decodable {
+    let displayName: String
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let name = try? container.decode(String.self) {
+            displayName = name
+        } else {
+            displayName = try container.decode([String].self).joined(separator: ", ")
+        }
+    }
 }
 
 struct ErrorEnvelope: Decodable {
