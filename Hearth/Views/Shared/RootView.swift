@@ -131,6 +131,9 @@ private struct SidebarRow: View {
 private struct SidebarEntryRow: View {
     let entry: ProjectEntry
     let isSelected: Bool
+    @Environment(AppEnvironment.self) private var environment
+
+    private var store: HearthStore { environment.store }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -143,12 +146,37 @@ private struct SidebarEntryRow: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
+            upDownControl
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(isSelected ? Color.accentColor.opacity(0.18) : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    @ViewBuilder
+    private var upDownControl: some View {
+        if store.isPending(entry) {
+            ProgressView().controlSize(.small)
+        } else if entry.connection != nil {
+            Button {
+                Task { await store.down(entry) }
+            } label: {
+                ControlGlyph(systemImage: "stop.fill")
+            }
+            .buttonStyle(.borderless)
+            .help("Down: stop all processes and the server")
+        } else if let project = entry.project {
+            Button {
+                Task { await store.up(project) }
+            } label: {
+                ControlGlyph(systemImage: "play.fill")
+            }
+            .buttonStyle(.borderless)
+            .help("Up: start headless in the background")
+            .disabled(project.isOrphaned || store.binaryPath == nil)
+        }
     }
 
     private var dotKind: StatusDot.Kind {
@@ -171,5 +199,20 @@ private struct SidebarEntryRow: View {
             let counts = "\(connection.runningCount)/\(connection.processes.count) running"
             return entry.project == nil ? "\(counts) · attached" : counts
         }
+    }
+}
+
+/// Draws play/stop glyphs in a fixed box so they line up down the sidebar. At this size the
+/// SF Symbols' drawn shapes sit off their bounds' center (play ~0.4pt right, stop ~0.1pt left),
+/// so each is shifted back to put the visible shapes on the same vertical axis.
+private struct ControlGlyph: View {
+    let systemImage: String
+
+    var body: some View {
+        Image(systemName: systemImage)
+            .font(.system(size: 11, weight: .semibold))
+            .offset(x: systemImage.hasPrefix("play") ? -0.375 : 0.125)
+            .frame(width: 18, height: 18)
+            .contentShape(Rectangle())
     }
 }
