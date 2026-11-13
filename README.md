@@ -19,8 +19,8 @@ brew install --cask warrenseine/hearth/hearth
 ```
 
 This also installs `process-compose` from its author's tap (`f1bonacc1/tap`) if needed. The app
-is unsigned (no Apple Developer ID yet), so macOS blocks the first launch. Approve it once in
-**System Settings → Privacy & Security → Open Anyway**, or run
+is unsigned (no Apple Developer ID yet); the cask strips its quarantine flag on install and
+upgrade so Gatekeeper doesn't block it. If macOS still refuses to open it, run
 `xattr -dr com.apple.quarantine /Applications/Hearth.app`.
 
 ## Requirements
