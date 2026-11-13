@@ -220,10 +220,26 @@ public actor ProjectRegistry {
         return ProjectContext(id: id, name: entry.name, directory: url, configFiles: entry.configFiles, envFiles: entry.envFiles, namespaces: entry.namespaces)
     }
 
-    /// Re-resolves every bookmark, refreshing `lastKnownPath` and `isOrphaned`.
+    /// Re-resolves every bookmark, refreshing `lastKnownPath` and `isOrphaned`, then drops
+    /// projects whose folder is gone for good (typically a deleted git worktree).
     public func refreshAll() -> [RegisteredProject] {
         for id in projects.keys { _ = resolve(id: id) }
+        let gone = projects.values.filter { $0.isOrphaned && isOnMountedVolume($0.lastKnownPath) }
+        if !gone.isEmpty {
+            gone.forEach { projects.removeValue(forKey: $0.id) }
+            try? persist()
+        }
         return all()
+    }
+
+    /// Whether the volume a path lived on is mounted right now. A folder on an ejected external
+    /// drive also fails to resolve, but it comes back once the drive is plugged in, so it's kept
+    /// (shown as "folder not found") rather than forgotten.
+    private func isOnMountedVolume(_ path: String?) -> Bool {
+        guard let path else { return true }
+        let components = (path as NSString).pathComponents
+        guard components.count >= 3, components[1] == "Volumes" else { return true }
+        return fileManager.fileExists(atPath: "/Volumes/\(components[2])")
     }
 
     // MARK: Persistence

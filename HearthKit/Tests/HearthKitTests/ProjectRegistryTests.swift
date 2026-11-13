@@ -59,6 +59,23 @@ struct ProjectRegistryTests {
         #expect(await reloaded.all().isEmpty)
     }
 
+    @Test("refreshAll forgets projects whose folder was deleted")
+    func prunesDeletedFolders() async throws {
+        let kept = try makeProjectDir(["process-compose.yml": "processes: {}\n"])
+        defer { try? FileManager.default.removeItem(at: kept) }
+        let deleted = try makeProjectDir(["process-compose.yml": "processes: {}\n"])
+        let store = FileManager.default.temporaryDirectory.appendingPathComponent("registry-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: store) }
+
+        let registry = try ProjectRegistry(storeURL: store)
+        let keptEntry = try await registry.register(directory: kept)
+        try await registry.register(directory: deleted)
+        try FileManager.default.removeItem(at: deleted)
+
+        #expect(await registry.refreshAll().map(\.id) == [keptEntry.id])
+        #expect(try await ProjectRegistry(storeURL: store).all().map(\.id) == [keptEntry.id])
+    }
+
     @Test("refuses a folder with no config file")
     func noConfig() async throws {
         let dir = try makeProjectDir([:])
