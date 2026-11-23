@@ -161,7 +161,7 @@ public final class ServerConnection: Identifiable {
             status = .needsToken
             return
         } catch {
-            if case .connected = status { status = .unreachable(String(describing: error)) }
+            status = .unreachable(String(describing: error))
             return
         }
         guard includePorts else { return }

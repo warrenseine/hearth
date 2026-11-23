@@ -26,6 +26,19 @@ struct ModelsDecodingTests {
         #expect(!flaky.canStart)
     }
 
+    @Test("decodes namespaces from process-compose 1.124 responses")
+    func namespaceLists() throws {
+        let list = Data(#"{"data":[{"name":"worker","namespace":["jobs","shared"]}]}"#.utf8)
+        let process = try #require(JSONDecoder().decode(ProcessesEnvelope.self, from: list).data.first)
+        #expect(process.namespace == "jobs, shared")
+
+        let event = Data(#"{"snapshot":true,"state":{"name":"worker","namespace":["jobs","shared"]}}"#.utf8)
+        #expect(try JSONDecoder().decode(ProcessStateEvent.self, from: event).state.namespace == "jobs, shared")
+
+        let info = Data(#"{"name":"worker","namespace":["jobs","shared"]}"#.utf8)
+        #expect(try ProcessConfig(data: info).namespace == "jobs, shared")
+    }
+
     @Test("decodes /project/state")
     func projectState() throws {
         let state = try JSONDecoder().decode(ProjectState.self, from: TestFixtures.data("project-state.json"))
