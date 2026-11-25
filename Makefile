@@ -30,7 +30,7 @@ clean:
 # Usage: make release VERSION=0.2.0
 release: gen
 	xcodebuild -project Hearth.xcodeproj -scheme Hearth -configuration Release \
-		-destination 'platform=macOS' -derivedDataPath build/DerivedData \
+		-destination 'generic/platform=macOS' -derivedDataPath build/DerivedData \
 		MARKETING_VERSION=$(VERSION) CURRENT_PROJECT_VERSION=$(shell date +%s) build
 	mkdir -p dist
 	ditto -c -k --sequesterRsrc --keepParent \
