@@ -1,4 +1,4 @@
-VERSION ?= 0.1.4
+VERSION ?= 0.1.5
 
 .PHONY: gen build test run clean release icon
 
