@@ -47,6 +47,16 @@ struct ModelsDecodingTests {
         #expect(config.prettyJSON.contains("readinessProbe"))
     }
 
+    @Test("decodes v1.124's namespace list in /processes and /process/info")
+    func namespaceList() throws {
+        let process = try JSONDecoder().decode(ProcessState.self, from: Data(#"{"name":"db","namespace":["default"],"status":"Completed"}"#.utf8))
+        #expect(process.namespace == "default")
+        let several = try JSONDecoder().decode(ProcessState.self, from: Data(#"{"name":"db","namespace":["a","b"]}"#.utf8))
+        #expect(several.namespace == "a, b")
+        let config = try ProcessConfig(data: Data(#"{"name":"db","namespace":["default"]}"#.utf8))
+        #expect(config.namespace == "default")
+    }
+
     @Test("decodes states and logs websocket frames")
     func websocketFrames() throws {
         let events = try TestFixtures.lines("states-ws.jsonl").map { try JSONDecoder().decode(ProcessStateEvent.self, from: Data($0.utf8)) }

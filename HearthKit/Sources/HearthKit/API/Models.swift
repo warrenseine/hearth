@@ -1,5 +1,20 @@
 import Foundation
 
+/// A process's namespace: a string up to process-compose v1.122, a list of strings from v1.124
+/// (a process can belong to several). Several are shown comma-separated.
+struct Namespace: Decodable {
+    let value: String
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if let single = try? c.decode(String.self) {
+            value = single
+        } else {
+            value = try c.decode([String].self).joined(separator: ", ")
+        }
+    }
+}
+
 /// One process as reported by `GET /processes`, `GET /process/{name}` and the states WebSocket.
 ///
 /// Every field past `name` decodes leniently (missing → a neutral default): the swagger spec
@@ -83,7 +98,7 @@ public struct ProcessState: Sendable, Equatable, Identifiable, Decodable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         name = try c.decode(String.self, forKey: .name)
-        namespace = try c.decodeIfPresent(String.self, forKey: .namespace) ?? "default"
+        namespace = try c.decodeIfPresent(Namespace.self, forKey: .namespace)?.value ?? "default"
         status = try c.decodeIfPresent(String.self, forKey: .status) ?? "Unknown"
         systemTime = try c.decodeIfPresent(String.self, forKey: .systemTime) ?? "-"
         age = try c.decodeIfPresent(Int64.self, forKey: .age) ?? 0
@@ -232,14 +247,14 @@ public struct ProcessConfig: Sendable, Equatable {
             let name: String
             let command: String?
             let workingDir: String?
-            let namespace: String?
+            let namespace: Namespace?
             let replicas: Int?
         }
         let typed = try JSONDecoder().decode(Typed.self, from: data)
         name = typed.name
         command = typed.command
         workingDir = typed.workingDir
-        namespace = typed.namespace
+        namespace = typed.namespace?.value
         replicas = typed.replicas
         // `originalConfig` is the same config again as an escaped JSON string; dropping it keeps
         // the raw view readable.

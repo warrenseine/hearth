@@ -161,7 +161,10 @@ public final class ServerConnection: Identifiable {
             status = .needsToken
             return
         } catch {
-            if case .connected = status { status = .unreachable(String(describing: error)) }
+            // Also from .connecting: a server that answers but whose replies we can't use must
+            // show the error, not a spinner forever.
+            let failed = Status.unreachable(String(describing: error))
+            if status != failed { status = failed }
             return
         }
         guard includePorts else { return }
